@@ -2,7 +2,7 @@
 
 A natural-language BI tool that lets you upload any dataset and ask business questions in plain English. Powered by Google Gemini and Streamlit.
 
-**[Try it live →](https://bi-assistant.streamlit.app)**
+**[Try it live →](https://bi-assistant-9gsky5cwnxdg2qnswa6fmr.streamlit.app/)**
 
 ## Features
 
