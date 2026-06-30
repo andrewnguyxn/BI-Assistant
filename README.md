@@ -2,6 +2,8 @@
 
 A natural-language BI tool that lets you upload any dataset and ask business questions in plain English. Powered by Google Gemini and Streamlit.
 
+**[Try it live →](https://bi-assistant.streamlit.app)**
+
 ## Features
 
 - **Upload any data** — SQLite databases (`.sqlite`, `.db`) or CSV files (each CSV becomes a table)
@@ -9,43 +11,6 @@ A natural-language BI tool that lets you upload any dataset and ask business que
 - **Natural language queries** — ask questions in English and get SQL, interactive charts, and actionable insights
 - **Auto-charting** — automatically picks the right chart type (bar, line, scatter) based on your data and question
 - **Export** — download query results as CSV
-
-## Getting Started
-
-### Prerequisites
-
-- Python 3.10+
-- A [Google AI Studio API key](https://aistudio.google.com/apikey) (free tier available)
-
-### Installation
-
-```bash
-git clone https://github.com/andrewnguyxn/BI-Assistant.git
-cd BI-Assistant
-pip install -r requirements.txt
-```
-
-### Configuration
-
-Copy the example env file and add your API key:
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env`:
-
-```
-GOOGLE_API_KEY=your_api_key_here
-```
-
-Alternatively, you can enter the key directly in the app sidebar.
-
-### Run
-
-```bash
-streamlit run app.py
-```
 
 ## Usage
 
@@ -56,6 +21,17 @@ streamlit run app.py
 ### Demo Dataset
 
 Place the [Olist e-commerce dataset](https://www.kaggle.com/datasets/terencicp/e-commerce-dataset-by-olist-as-an-sqlite-database) as `data/olist.sqlite` to use the built-in demo option.
+
+## Running Locally
+
+```bash
+git clone https://github.com/andrewnguyxn/BI-Assistant.git
+cd BI-Assistant
+pip install -r requirements.txt
+GOOGLE_API_KEY=your_key streamlit run app.py
+```
+
+Get a free API key at [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
 
 ## Tech Stack
 

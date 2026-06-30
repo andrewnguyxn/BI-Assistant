@@ -259,19 +259,6 @@ def ingest_uploaded_files(uploaded_files) -> str | None:
 
 # ── Sidebar (always visible) ────────────────────────────────────────────────
 with st.sidebar:
-    st.header("⚙️ Configuration")
-
-    stored_key = st.session_state.get("api_key", "")
-    api_key_input = st.text_input(
-        "Google AI Studio API Key",
-        value=stored_key,
-        type="password",
-        placeholder="AIza...",
-        help="Get a free key at aistudio.google.com/apikey. Stored only in session memory.",
-    )
-    if api_key_input:
-        st.session_state["api_key"] = api_key_input
-
     if st.session_state.page != "upload":
         st.divider()
         if st.button("📂 Upload New Data", use_container_width=True):
@@ -428,7 +415,7 @@ elif st.session_state.page == "overview":
         if st.button("🧠 Generate AI Overview", type="secondary", use_container_width=True):
             client = get_genai_client()
             if client is None:
-                st.error("Enter your Google AI Studio API key in the sidebar first.")
+                st.error("Could not initialize AI client. Check that GOOGLE_API_KEY is set in Streamlit secrets.")
             else:
                 with st.spinner("Analyzing your data with AI…"):
                     schema_text = schema_to_text(schema)
@@ -487,7 +474,7 @@ elif st.session_state.page == "query":
     if run_btn and question.strip():
         client = get_genai_client()
         if client is None:
-            st.error("No Google AI Studio API key provided. Enter it in the sidebar.")
+            st.error("Could not initialize AI client. Check that GOOGLE_API_KEY is set in Streamlit secrets.")
             st.stop()
 
         schema_text = schema_to_text(schema)
