@@ -89,7 +89,7 @@ def schema_to_text(schema: dict[str, list[dict]]) -> str:
 
 
 def get_genai_client() -> genai.Client | None:
-    api_key = os.getenv("GOOGLE_API_KEY") or st.session_state.get("api_key", "")
+    api_key = st.secrets.get("GOOGLE_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "")
     if not api_key:
         return None
     return genai.Client(api_key=api_key)
