@@ -72,11 +72,13 @@ st.markdown("""
 /* ── How-it-works cards ── */
 .hiw-card { background: rgba(37,43,74,0.6); border: 1px solid rgba(108,99,255,0.18);
             border-radius: 16px; padding: 28px 20px 24px; text-align: center;
-            transition: border-color 0.2s; }
+            transition: border-color 0.2s; height: 100%; box-sizing: border-box; }
 .hiw-card:hover { border-color: rgba(108,99,255,0.45); }
 .hiw-icon { font-size: 3rem; margin-bottom: 14px; }
 .hiw-title { font-size: 0.95rem; font-weight: 700; color: #e0e4f0; margin-bottom: 8px; }
 .hiw-desc { font-size: 0.78rem; color: #6070a0; line-height: 1.5; }
+[data-testid="column"] > div { height: 100%; }
+[data-testid="column"] > div > div { height: 100%; }
 
 /* ── Upload area label ── */
 .upload-label { font-size: 1rem; font-weight: 600; color: #c0c8e0; margin-bottom: 8px; }
@@ -649,9 +651,12 @@ elif st.session_state.page == "query":
         ]
         for ex in examples:
             if st.button(ex, key=f"ex_{ex[:30]}", use_container_width=True):
-                st.session_state["prefill_question"] = ex
+                st.session_state["current_question"] = ex
+                st.rerun()
 
-    prefill = st.session_state.pop("prefill_question", "")
+    # Apply any prefill into the persistent question key, then clear it
+    if "prefill_question" in st.session_state:
+        st.session_state["current_question"] = st.session_state.pop("prefill_question")
 
     # Show suggested follow-ups from last query as quick-select chips
     if st.session_state.get("followups"):
@@ -659,15 +664,15 @@ elif st.session_state.page == "query":
         fu_cols = st.columns(len(st.session_state.followups))
         for col, fq in zip(fu_cols, st.session_state.followups):
             if col.button(fq, use_container_width=True, key=f"fu_{fq[:30]}"):
-                st.session_state["prefill_question"] = fq
+                st.session_state["current_question"] = fq
                 st.session_state["followups"] = []
                 st.rerun()
 
     question = st.text_area(
         "Ask a business question:",
-        value=prefill,
         placeholder="e.g. What are the top 5 categories by revenue?",
         height=90,
+        key="current_question",
     )
 
     run_btn = st.button("🔍 Run Query", type="primary", disabled=not question.strip())
@@ -751,4 +756,3 @@ elif st.session_state.page == "query":
         st.session_state.history.append(
             {"question": question, "sql": sql, "insight": insight}
         )
-        st.rerun()
