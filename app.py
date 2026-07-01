@@ -532,17 +532,6 @@ if st.session_state.page == "upload":
         label_visibility="collapsed",
     )
 
-    st.markdown(
-        '<div style="margin-top:10px">'
-        '<span class="fmt-badge">📄 CSV</span>'
-        '<span class="fmt-badge">🗃 SQLITE</span>'
-        '<span class="fmt-badge">💾 DB</span>'
-        '<span class="fmt-badge">📝 TXT</span>'
-        '<span class="fmt-badge">🔧 JSON</span>'
-        '<span class="fmt-badge">📊 XLSX</span>'
-        '</div>',
-        unsafe_allow_html=True,
-    )
 
     st.markdown("<br>", unsafe_allow_html=True)
 
