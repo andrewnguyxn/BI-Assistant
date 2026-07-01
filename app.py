@@ -1,3 +1,4 @@
+import base64
 import os
 import re
 import sqlite3
@@ -11,6 +12,10 @@ import plotly.express as px
 import streamlit as st
 from google import genai
 from google.genai.errors import ServerError
+
+def _logo_svg() -> str:
+    p = Path(__file__).parent / "logo.svg"
+    return p.read_text() if p.exists() else ""
 
 # ── Config ──────────────────────────────────────────────────────────────────
 UPLOAD_DIR = Path(tempfile.gettempdir()) / "bi_assistant_uploads"
@@ -440,15 +445,15 @@ def ingest_uploaded_files(uploaded_files) -> str | None:
 
 # ── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
-    st.markdown("""
-    <div style="padding: 8px 0 20px;">
-        <div style="font-size:1.4rem;font-weight:800;background:linear-gradient(135deg,#6c63ff,#a78bfa);
-                    -webkit-background-clip:text;-webkit-text-fill-color:transparent;">
-            📊 BI Assistant
-        </div>
-        <div style="font-size:0.75rem;color:#6070a0;margin-top:2px;">Powered by Gemini AI</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f'<div style="padding:8px 0 20px;text-align:center">'
+        f'<div style="width:80px;margin:0 auto 10px">{_logo_svg()}</div>'
+        f'<div style="font-size:1.3rem;font-weight:800;background:linear-gradient(135deg,#6c63ff,#a78bfa);'
+        f'-webkit-background-clip:text;-webkit-text-fill-color:transparent;">BI Assistant</div>'
+        f'<div style="font-size:0.72rem;color:#6070a0;margin-top:2px;">Powered by Gemini AI</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
     if st.session_state.page != "upload":
         if st.button("📂 Upload New Data", use_container_width=True):
