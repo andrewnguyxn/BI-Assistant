@@ -372,9 +372,53 @@ def auto_chart(df: pd.DataFrame, question: str) -> None:
     st.plotly_chart(fig, use_container_width=True)
 
 
+def _safe_table_name(filename: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9_]", "_", Path(filename).stem)
+
+
+def _file_to_df(f) -> list[tuple[str, pd.DataFrame]]:
+    """Return a list of (table_name, DataFrame) pairs for any supported file."""
+    name = f.name.lower()
+    table = _safe_table_name(f.name)
+
+    if name.endswith(".csv"):
+        return [(table, pd.read_csv(f))]
+
+    if name.endswith(".txt"):
+        # Try tab-separated first, fall back to comma
+        try:
+            df = pd.read_csv(f, sep="\t")
+            if df.shape[1] < 2:
+                f.seek(0)
+                df = pd.read_csv(f)
+        except Exception:
+            f.seek(0)
+            df = pd.read_csv(f)
+        return [(table, df)]
+
+    if name.endswith(".json"):
+        import json
+        data = json.loads(f.read())
+        if isinstance(data, list):
+            return [(table, pd.DataFrame(data))]
+        if isinstance(data, dict):
+            # {sheet: [records]} or flat object → wrap in list
+            results = []
+            for key, val in data.items():
+                tname = re.sub(r"[^a-zA-Z0-9_]", "_", str(key))
+                results.append((tname, pd.DataFrame(val) if isinstance(val, list) else pd.DataFrame([val])))
+            return results if results else [(table, pd.DataFrame([data]))]
+
+    if name.endswith(".xlsx") or name.endswith(".xls"):
+        xl = pd.ExcelFile(f)
+        return [(re.sub(r"[^a-zA-Z0-9_]", "_", sheet), xl.parse(sheet)) for sheet in xl.sheet_names]
+
+    return []
+
+
 def ingest_uploaded_files(uploaded_files) -> str | None:
-    sqlite_files = [f for f in uploaded_files if f.name.endswith(".sqlite") or f.name.endswith(".db")]
-    csv_files = [f for f in uploaded_files if f.name.endswith(".csv")]
+    sqlite_files = [f for f in uploaded_files if f.name.lower().endswith((".sqlite", ".db"))]
+    other_files = [f for f in uploaded_files if not f.name.lower().endswith((".sqlite", ".db"))]
 
     if sqlite_files:
         db_file = sqlite_files[0]
@@ -382,14 +426,12 @@ def ingest_uploaded_files(uploaded_files) -> str | None:
         db_path.write_bytes(db_file.getvalue())
         return str(db_path)
 
-    if csv_files:
+    if other_files:
         db_path = UPLOAD_DIR / "uploaded_data.sqlite"
         conn = sqlite3.connect(str(db_path))
-        for csv_file in csv_files:
-            table_name = Path(csv_file.name).stem
-            table_name = re.sub(r"[^a-zA-Z0-9_]", "_", table_name)
-            df = pd.read_csv(csv_file)
-            df.to_sql(table_name, conn, if_exists="replace", index=False)
+        for f in other_files:
+            for table_name, df in _file_to_df(f):
+                df.to_sql(table_name, conn, if_exists="replace", index=False)
         conn.close()
         return str(db_path)
 
@@ -484,9 +526,9 @@ if st.session_state.page == "upload":
 
     uploaded = st.file_uploader(
         "",
-        type=["sqlite", "db", "csv"],
+        type=["sqlite", "db", "csv", "txt", "json", "xlsx", "xls"],
         accept_multiple_files=True,
-        help="Upload a .sqlite/.db file, or multiple .csv files (each becomes a table).",
+        help="SQLite/DB loaded directly. CSV, TXT, JSON, and Excel sheets each become a table.",
         label_visibility="collapsed",
     )
 
@@ -495,6 +537,9 @@ if st.session_state.page == "upload":
         '<span class="fmt-badge">📄 CSV</span>'
         '<span class="fmt-badge">🗃 SQLITE</span>'
         '<span class="fmt-badge">💾 DB</span>'
+        '<span class="fmt-badge">📝 TXT</span>'
+        '<span class="fmt-badge">🔧 JSON</span>'
+        '<span class="fmt-badge">📊 XLSX</span>'
         '</div>'
         '<div style="font-size:0.72rem;color:#4a5070;margin-top:6px">• 200MB per file</div>',
         unsafe_allow_html=True,
