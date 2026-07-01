@@ -21,6 +21,23 @@ GEMINI_MODEL = "gemini-2.5-flash"
 OVERLOAD_RETRY_LIMIT = 3
 OVERLOAD_RETRY_DELAY = 5
 
+CHART_THEME = dict(
+    paper_bgcolor="rgba(0,0,0,0)",
+    plot_bgcolor="rgba(37,43,74,0.6)",
+    font=dict(color="#e0e4f0"),
+    xaxis=dict(gridcolor="rgba(108,99,255,0.15)", zerolinecolor="rgba(108,99,255,0.2)"),
+    yaxis=dict(gridcolor="rgba(108,99,255,0.15)", zerolinecolor="rgba(108,99,255,0.2)"),
+    margin=dict(t=48, b=24, l=16, r=16),
+    height=420,
+)
+
+TYPE_BADGE_COLORS = {
+    "int": "#6c63ff", "integer": "#6c63ff", "real": "#6c63ff", "numeric": "#6c63ff",
+    "float": "#6c63ff", "double": "#6c63ff", "text": "#2ea8a0", "varchar": "#2ea8a0",
+    "blob": "#a07c2e", "boolean": "#c063a0", "date": "#2e7ca0", "datetime": "#2e7ca0",
+    "timestamp": "#2e7ca0",
+}
+
 # ── Page setup ───────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="BI Assistant",
@@ -29,20 +46,77 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+st.markdown("""
+<style>
+[data-testid="stSidebar"] { border-right: 1px solid rgba(108,99,255,0.2); }
+.metric-card { background: rgba(37,43,74,0.8); border: 1px solid rgba(108,99,255,0.25);
+               border-radius: 12px; padding: 20px 24px; text-align: center; }
+.metric-card .value { font-size: 2rem; font-weight: 700; color: #6c63ff; }
+.metric-card .label { font-size: 0.8rem; color: #a0a8c0; text-transform: uppercase;
+                      letter-spacing: 0.08em; margin-top: 4px; }
+.type-badge { display: inline-block; padding: 2px 8px; border-radius: 4px;
+              font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+              letter-spacing: 0.05em; margin-left: 4px; }
+.step-bar { display: flex; gap: 0; margin-bottom: 28px; }
+.step { flex: 1; padding: 10px 0; text-align: center; font-size: 0.8rem;
+        font-weight: 600; letter-spacing: 0.04em; border-bottom: 3px solid rgba(108,99,255,0.2);
+        color: #6070a0; }
+.step.active { border-bottom-color: #6c63ff; color: #e0e4f0; }
+.step.done { border-bottom-color: #2ea8a0; color: #2ea8a0; }
+.hero { text-align: center; padding: 48px 0 32px; }
+.hero h1 { font-size: 3rem; font-weight: 800; background: linear-gradient(135deg, #6c63ff, #a78bfa);
+           -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 12px; }
+.hero p { font-size: 1.1rem; color: #a0a8c0; max-width: 520px; margin: 0 auto; }
+.insight-box { background: rgba(108,99,255,0.08); border-left: 3px solid #6c63ff;
+               border-radius: 0 8px 8px 0; padding: 16px 20px; margin-top: 8px; }
+</style>
+""", unsafe_allow_html=True)
+
 # ── Session state defaults ──────────────────────────────────────────────────
 for key, default in {
     "history": [],
-    "page": "upload",       # upload | overview | query
-    "db_path": None,        # path to active sqlite file
-    "db_name": None,        # display name
-    "ai_overview": None,    # cached AI overview text
-    "table_stats": None,    # cached {table: {rows, cols, preview}}
+    "page": "upload",
+    "db_path": None,
+    "db_name": None,
+    "ai_overview": None,
+    "table_stats": None,
 }.items():
     if key not in st.session_state:
         st.session_state[key] = default
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
+def render_steps():
+    page = st.session_state.page
+    steps = [("1  Upload", "upload"), ("2  Overview", "overview"), ("3  Query", "query")]
+    parts = []
+    for label, key in steps:
+        pages = ["upload", "overview", "query"]
+        current_idx = pages.index(page)
+        step_idx = pages.index(key)
+        if step_idx < current_idx:
+            cls = "done"
+        elif step_idx == current_idx:
+            cls = "active"
+        else:
+            cls = ""
+        parts.append(f'<div class="step {cls}">{label}</div>')
+    st.markdown(f'<div class="step-bar">{"".join(parts)}</div>', unsafe_allow_html=True)
+
+
+def type_badge(col_type: str) -> str:
+    t = col_type.lower().split("(")[0].strip()
+    color = TYPE_BADGE_COLORS.get(t, "#4a5070")
+    return f'<span class="type-badge" style="background:{color}22;color:{color};border:1px solid {color}55">{col_type or "—"}</span>'
+
+
+def metric_card(label: str, value: str):
+    st.markdown(
+        f'<div class="metric-card"><div class="value">{value}</div><div class="label">{label}</div></div>',
+        unsafe_allow_html=True,
+    )
+
+
 def get_db_connection():
     db_path = st.session_state.get("db_path")
     if not db_path or not Path(db_path).exists():
@@ -175,6 +249,21 @@ def generate_insight(client: genai.Client, question: str, df: pd.DataFrame) -> s
     return generate_content_with_retry(client, prompt).strip()
 
 
+def generate_followups(client: genai.Client, question: str, schema_text: str) -> list[str]:
+    prompt = textwrap.dedent(f"""
+        A user asked: "{question}"
+
+        Given this database schema:
+        {schema_text}
+
+        Suggest exactly 3 short follow-up questions they might want to ask next.
+        Return only a numbered list, one question per line, no explanation.
+    """).strip()
+    raw = generate_content_with_retry(client, prompt)
+    lines = [re.sub(r"^\d+[\.\)]\s*", "", l).strip() for l in raw.strip().splitlines() if l.strip()]
+    return lines[:3]
+
+
 def generate_ai_overview(client: genai.Client, schema_text: str, table_stats: dict) -> str:
     stats_summary = []
     for table, info in table_stats.items():
@@ -215,25 +304,30 @@ def auto_chart(df: pd.DataFrame, question: str) -> None:
     q_lower = question.lower()
     is_time = any(kw in q_lower for kw in ["month", "year", "date", "time", "trend", "over time", "daily", "weekly"])
 
+    color_seq = ["#6c63ff", "#a78bfa", "#2ea8a0", "#f59e0b", "#f472b6"]
+
     if is_time and len(num_cols) >= 1 and len(cat_cols) >= 1:
-        fig = px.line(df, x=cat_cols[0], y=num_cols[0], markers=True, title="Trend Over Time")
+        fig = px.line(df, x=cat_cols[0], y=num_cols[0], markers=True,
+                      title="Trend Over Time", color_discrete_sequence=color_seq)
     elif len(cat_cols) >= 1 and len(num_cols) >= 1:
         if df[cat_cols[0]].nunique() > 12:
-            fig = px.bar(df, x=num_cols[0], y=cat_cols[0], orientation="h", title="Results")
+            fig = px.bar(df, x=num_cols[0], y=cat_cols[0], orientation="h",
+                         title="Results", color_discrete_sequence=color_seq)
         else:
-            fig = px.bar(df, x=cat_cols[0], y=num_cols[0], title="Results")
+            fig = px.bar(df, x=cat_cols[0], y=num_cols[0],
+                         title="Results", color_discrete_sequence=color_seq)
     elif len(num_cols) >= 2:
-        fig = px.scatter(df, x=num_cols[0], y=num_cols[1], title="Scatter")
+        fig = px.scatter(df, x=num_cols[0], y=num_cols[1],
+                         title="Scatter", color_discrete_sequence=color_seq)
     else:
         st.dataframe(df, use_container_width=True)
         return
 
-    fig.update_layout(margin=dict(t=40, b=20), height=420)
+    fig.update_layout(**CHART_THEME)
     st.plotly_chart(fig, use_container_width=True)
 
 
 def ingest_uploaded_files(uploaded_files) -> str | None:
-    """Convert uploaded files into a single SQLite database. Returns the db path."""
     sqlite_files = [f for f in uploaded_files if f.name.endswith(".sqlite") or f.name.endswith(".db")]
     csv_files = [f for f in uploaded_files if f.name.endswith(".csv")]
 
@@ -257,10 +351,19 @@ def ingest_uploaded_files(uploaded_files) -> str | None:
     return None
 
 
-# ── Sidebar (always visible) ────────────────────────────────────────────────
+# ── Sidebar ──────────────────────────────────────────────────────────────────
 with st.sidebar:
+    st.markdown("""
+    <div style="padding: 8px 0 20px;">
+        <div style="font-size:1.4rem;font-weight:800;background:linear-gradient(135deg,#6c63ff,#a78bfa);
+                    -webkit-background-clip:text;-webkit-text-fill-color:transparent;">
+            📊 BI Assistant
+        </div>
+        <div style="font-size:0.75rem;color:#6070a0;margin-top:2px;">Powered by Gemini AI</div>
+    </div>
+    """, unsafe_allow_html=True)
+
     if st.session_state.page != "upload":
-        st.divider()
         if st.button("📂 Upload New Data", use_container_width=True):
             st.session_state.page = "upload"
             st.session_state.db_path = None
@@ -274,18 +377,28 @@ with st.sidebar:
         if conn:
             schema = get_schema(conn)
             if schema:
-                st.success(f"✅ {st.session_state.db_name} — {len(schema)} tables")
-                st.header("🗂 Tables")
+                st.markdown(f"""
+                <div style="background:rgba(46,168,160,0.1);border:1px solid rgba(46,168,160,0.3);
+                            border-radius:8px;padding:10px 14px;margin:12px 0;font-size:0.82rem;">
+                    ✅ <b>{st.session_state.db_name}</b><br>
+                    <span style="color:#6070a0">{len(schema)} tables loaded</span>
+                </div>
+                """, unsafe_allow_html=True)
+                st.markdown("**🗂 Schema**")
                 for table, cols in schema.items():
                     with st.expander(f"**{table}** ({len(cols)} cols)"):
                         for c in cols:
-                            st.markdown(f"- `{c['name']}` *{c['type']}*")
+                            st.markdown(
+                                f'<div style="padding:2px 0;font-size:0.82rem">'
+                                f'<code>{c["name"]}</code>{type_badge(c["type"])}</div>',
+                                unsafe_allow_html=True,
+                            )
 
     if st.session_state.page == "query" and st.session_state.history:
         st.divider()
-        st.header("🕒 Query History")
+        st.markdown("**🕒 Query History**")
         for i, entry in enumerate(reversed(st.session_state.history[-10:])):
-            with st.expander(f"Q{len(st.session_state.history) - i}: {entry['question'][:50]}…"):
+            with st.expander(f"Q{len(st.session_state.history) - i}: {entry['question'][:45]}…"):
                 st.code(entry["sql"], language="sql")
                 if entry.get("insight"):
                     st.caption(entry["insight"])
@@ -295,23 +408,40 @@ with st.sidebar:
 # PAGE: Upload / Welcome
 # ═══════════════════════════════════════════════════════════════════════════
 if st.session_state.page == "upload":
-    st.title("📊 BI Assistant")
+    render_steps()
+
     st.markdown("""
-    **Turn any dataset into insights — no SQL required.**
+    <div class="hero">
+        <h1>BI Assistant</h1>
+        <p>Turn any dataset into insights — no SQL required.<br>
+           Upload your data and ask questions in plain English.</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    Upload your data and ask business questions in plain English.
-    The AI will write SQL queries, generate charts, and provide actionable insights.
+    st.divider()
 
-    ### Getting Started
-    1. **Upload** a SQLite database (`.sqlite` / `.db`) or one or more CSV files.
-    2. **Review** the auto-generated data overview.
-    3. **Ask questions** and get instant answers with charts and insights.
-    """)
+    c1, c2, c3 = st.columns([1, 2, 1])
+    with c2:
+        st.markdown("#### How it works")
+        cols = st.columns(3)
+        for col, icon, title, desc in zip(
+            cols,
+            ["📁", "🔍", "💡"],
+            ["Upload", "Explore", "Ask"],
+            ["SQLite or CSV files", "Auto schema detection", "Plain English queries"],
+        ):
+            col.markdown(
+                f'<div style="text-align:center;padding:16px 8px;">'
+                f'<div style="font-size:2rem">{icon}</div>'
+                f'<div style="font-weight:700;margin:6px 0 4px">{title}</div>'
+                f'<div style="font-size:0.8rem;color:#6070a0">{desc}</div></div>',
+                unsafe_allow_html=True,
+            )
 
     st.divider()
 
     uploaded = st.file_uploader(
-        "Upload your data",
+        "Drop your data file here",
         type=["sqlite", "db", "csv"],
         accept_multiple_files=True,
         help="Upload a .sqlite/.db file, or multiple .csv files (each becomes a table).",
@@ -331,7 +461,7 @@ if st.session_state.page == "upload":
     with col2:
         demo_available = demo_path.exists()
         demo_btn = st.button(
-            "📦 Use Demo Dataset (Olist)",
+            "📦 Use Demo Dataset",
             disabled=not demo_available,
             use_container_width=True,
             help="Use the bundled Olist e-commerce dataset." if demo_available else "Place olist.sqlite in data/ to enable.",
@@ -347,6 +477,7 @@ if st.session_state.page == "upload":
             st.session_state.ai_overview = None
             st.session_state.table_stats = None
             st.session_state.page = "overview"
+            st.toast("Data loaded successfully!", icon="✅")
             st.rerun()
         else:
             st.error("Unsupported file type. Please upload .sqlite, .db, or .csv files.")
@@ -357,6 +488,7 @@ if st.session_state.page == "upload":
         st.session_state.ai_overview = None
         st.session_state.table_stats = None
         st.session_state.page = "overview"
+        st.toast("Demo dataset loaded!", icon="📦")
         st.rerun()
 
 
@@ -364,8 +496,10 @@ if st.session_state.page == "upload":
 # PAGE: Data Overview
 # ═══════════════════════════════════════════════════════════════════════════
 elif st.session_state.page == "overview":
-    st.title("📊 Data Overview")
-    st.caption(f"Dataset: **{st.session_state.db_name}**")
+    render_steps()
+
+    st.markdown(f"## Data Overview")
+    st.markdown(f'<div style="color:#6070a0;margin-bottom:24px">Dataset: <b style="color:#a0a8c0">{st.session_state.db_name}</b></div>', unsafe_allow_html=True)
 
     conn = get_db_connection()
     if conn is None:
@@ -377,39 +511,40 @@ elif st.session_state.page == "overview":
         st.error("No tables found in the database.")
         st.stop()
 
-    # Compute table stats once
     if st.session_state.table_stats is None:
         st.session_state.table_stats = get_table_stats(conn, schema)
     table_stats = st.session_state.table_stats
 
-    # Summary metrics
     total_rows = sum(info["rows"] for info in table_stats.values())
     total_tables = len(schema)
     total_cols = sum(info["cols"] for info in table_stats.values())
 
     m1, m2, m3 = st.columns(3)
-    m1.metric("Tables", total_tables)
-    m2.metric("Total Columns", total_cols)
-    m3.metric("Total Rows", f"{total_rows:,}")
+    with m1:
+        metric_card("Tables", str(total_tables))
+    with m2:
+        metric_card("Total Columns", str(total_cols))
+    with m3:
+        metric_card("Total Rows", f"{total_rows:,}")
 
     st.divider()
 
-    # Table details
-    st.subheader("🗂 Tables")
+    st.markdown("#### 🗂 Tables")
     for table, cols in schema.items():
         info = table_stats[table]
-        with st.expander(f"**{table}** — {info['rows']:,} rows, {info['cols']} columns"):
-            col_names = [c["name"] for c in cols]
-            col_types = [c["type"] for c in cols]
-            st.markdown("**Columns:** " + ", ".join(f"`{n}` ({t})" for n, t in zip(col_names, col_types)))
+        with st.expander(f"**{table}** — {info['rows']:,} rows · {info['cols']} columns"):
+            badge_row = " ".join(
+                f'<code style="font-size:0.8rem">{c["name"]}</code>{type_badge(c["type"])}'
+                for c in cols
+            )
+            st.markdown(f'<div style="line-height:2.2;margin-bottom:10px">{badge_row}</div>', unsafe_allow_html=True)
             st.caption("Preview (first 5 rows):")
             st.dataframe(info["preview"], use_container_width=True, hide_index=True)
 
     st.divider()
 
-    # AI Overview
     if st.session_state.ai_overview:
-        st.subheader("🧠 AI Overview")
+        st.markdown("#### 🧠 AI Overview")
         st.markdown(st.session_state.ai_overview)
     else:
         if st.button("🧠 Generate AI Overview", type="secondary", use_container_width=True):
@@ -421,11 +556,12 @@ elif st.session_state.page == "overview":
                     schema_text = schema_to_text(schema)
                     overview = generate_ai_overview(client, schema_text, table_stats)
                     st.session_state.ai_overview = overview
+                st.toast("AI overview ready!", icon="🧠")
                 st.rerun()
 
     st.divider()
 
-    if st.button("🔍 Start Querying", type="primary", use_container_width=True):
+    if st.button("🔍 Start Querying →", type="primary", use_container_width=True):
         st.session_state.page = "query"
         st.rerun()
 
@@ -434,8 +570,10 @@ elif st.session_state.page == "overview":
 # PAGE: Query Interface
 # ═══════════════════════════════════════════════════════════════════════════
 elif st.session_state.page == "query":
-    st.title("📊 BI Assistant")
-    st.caption(f"Dataset: **{st.session_state.db_name}** — Ask business questions in plain English.")
+    render_steps()
+
+    st.markdown("## Ask a Question")
+    st.markdown(f'<div style="color:#6070a0;margin-bottom:24px">Dataset: <b style="color:#a0a8c0">{st.session_state.db_name}</b></div>', unsafe_allow_html=True)
 
     conn = get_db_connection()
     if conn is None:
@@ -447,10 +585,9 @@ elif st.session_state.page == "query":
 
     schema = get_schema(conn)
 
-    # Example questions
     with st.sidebar:
         st.divider()
-        st.header("💡 Example Questions")
+        st.markdown("**💡 Example Questions**")
         examples = [
             "What are the top 5 categories by total revenue?",
             "How many records are in each table?",
@@ -462,6 +599,17 @@ elif st.session_state.page == "query":
                 st.session_state["prefill_question"] = ex
 
     prefill = st.session_state.pop("prefill_question", "")
+
+    # Show suggested follow-ups from last query as quick-select chips
+    if st.session_state.get("followups"):
+        st.markdown('<div style="font-size:0.8rem;color:#6070a0;margin-bottom:6px">Suggested follow-ups:</div>', unsafe_allow_html=True)
+        fu_cols = st.columns(len(st.session_state.followups))
+        for col, fq in zip(fu_cols, st.session_state.followups):
+            if col.button(fq, use_container_width=True, key=f"fu_{fq[:30]}"):
+                st.session_state["prefill_question"] = fq
+                st.session_state["followups"] = []
+                st.rerun()
+
     question = st.text_area(
         "Ask a business question:",
         value=prefill,
@@ -503,20 +651,29 @@ elif st.session_state.page == "query":
                         st.stop()
                     st.warning(f"SQL error (retrying): {last_error}")
 
-            st.write("Generating insight…")
+            st.write("Generating insight and follow-up questions…")
             insight = generate_insight(client, question, df)
+            followups = generate_followups(client, question, schema_text)
             status.update(label="✅ Done", state="complete", expanded=False)
 
-        st.subheader("🔎 Generated SQL")
+        st.toast("Query complete!", icon="✅")
+
+        st.markdown("#### 🔎 Generated SQL")
         st.code(sql, language="sql")
 
         if df.empty:
-            st.info("Query returned no rows.")
+            st.markdown("""
+            <div style="text-align:center;padding:48px 0;color:#6070a0;">
+                <div style="font-size:2.5rem">🔍</div>
+                <div style="font-size:1.1rem;margin-top:12px;font-weight:600">No results found</div>
+                <div style="font-size:0.85rem;margin-top:6px">Try rephrasing your question or check the schema.</div>
+            </div>
+            """, unsafe_allow_html=True)
         else:
             col_chart, col_table = st.columns([3, 2])
 
             with col_chart:
-                st.subheader("📈 Chart")
+                st.markdown("#### 📈 Chart")
                 if len(df) > MAX_ROWS_FOR_CHART:
                     st.caption(f"Showing chart for first {MAX_ROWS_FOR_CHART} rows.")
                     auto_chart(df.head(MAX_ROWS_FOR_CHART), question)
@@ -524,7 +681,7 @@ elif st.session_state.page == "query":
                     auto_chart(df, question)
 
             with col_table:
-                st.subheader("📋 Data")
+                st.markdown("#### 📋 Data")
                 st.dataframe(df, use_container_width=True, height=380)
                 csv = df.to_csv(index=False).encode("utf-8")
                 st.download_button(
@@ -534,9 +691,11 @@ elif st.session_state.page == "query":
                     mime="text/csv",
                 )
 
-        st.subheader("🧠 AI Insight")
-        st.info(insight)
+        st.markdown("#### 🧠 AI Insight")
+        st.markdown(f'<div class="insight-box">{insight}</div>', unsafe_allow_html=True)
 
+        st.session_state.followups = followups
         st.session_state.history.append(
             {"question": question, "sql": sql, "insight": insight}
         )
+        st.rerun()
