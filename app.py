@@ -49,24 +49,55 @@ st.set_page_config(
 st.markdown("""
 <style>
 [data-testid="stSidebar"] { border-right: 1px solid rgba(108,99,255,0.2); }
+
+/* ── Stepper ── */
+.stepper { display: flex; align-items: center; justify-content: center;
+           padding: 32px 0 40px; gap: 0; }
+.stepper-step { display: flex; flex-direction: column; align-items: center; position: relative; }
+.stepper-circle { width: 56px; height: 56px; border-radius: 50%; display: flex;
+                  align-items: center; justify-content: center; font-size: 1.4rem;
+                  font-weight: 700; border: 2px solid rgba(108,99,255,0.3);
+                  background: rgba(26,31,54,0.9); color: #6070a0; position: relative; z-index: 1; }
+.stepper-circle.active { border-color: #6c63ff; background: rgba(108,99,255,0.15);
+                          color: #6c63ff; box-shadow: 0 0 0 4px rgba(108,99,255,0.12); }
+.stepper-circle.done { border-color: #2ea8a0; background: rgba(46,168,160,0.12); color: #2ea8a0; }
+.stepper-label { font-size: 0.72rem; font-weight: 600; margin-top: 10px; color: #6070a0;
+                 letter-spacing: 0.03em; white-space: nowrap; }
+.stepper-label.active { color: #e0e4f0; }
+.stepper-label.done { color: #2ea8a0; }
+.stepper-line { width: 120px; height: 2px; background: rgba(108,99,255,0.15);
+                margin-bottom: 28px; }
+.stepper-line.done { background: rgba(46,168,160,0.4); }
+
+/* ── How-it-works cards ── */
+.hiw-card { background: rgba(37,43,74,0.6); border: 1px solid rgba(108,99,255,0.18);
+            border-radius: 16px; padding: 28px 20px 24px; text-align: center;
+            transition: border-color 0.2s; }
+.hiw-card:hover { border-color: rgba(108,99,255,0.45); }
+.hiw-icon { font-size: 3rem; margin-bottom: 14px; }
+.hiw-title { font-size: 0.95rem; font-weight: 700; color: #e0e4f0; margin-bottom: 8px; }
+.hiw-desc { font-size: 0.78rem; color: #6070a0; line-height: 1.5; }
+
+/* ── Upload area label ── */
+.upload-label { font-size: 1rem; font-weight: 600; color: #c0c8e0; margin-bottom: 8px; }
+.fmt-badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 10px;
+             border: 1px solid rgba(108,99,255,0.3); border-radius: 6px;
+             font-size: 0.72rem; font-weight: 600; color: #8888bb;
+             background: rgba(108,99,255,0.06); margin-right: 6px; }
+
+/* ── Metric cards ── */
 .metric-card { background: rgba(37,43,74,0.8); border: 1px solid rgba(108,99,255,0.25);
                border-radius: 12px; padding: 20px 24px; text-align: center; }
 .metric-card .value { font-size: 2rem; font-weight: 700; color: #6c63ff; }
 .metric-card .label { font-size: 0.8rem; color: #a0a8c0; text-transform: uppercase;
                       letter-spacing: 0.08em; margin-top: 4px; }
+
+/* ── Type badges ── */
 .type-badge { display: inline-block; padding: 2px 8px; border-radius: 4px;
               font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
               letter-spacing: 0.05em; margin-left: 4px; }
-.step-bar { display: flex; gap: 0; margin-bottom: 28px; }
-.step { flex: 1; padding: 10px 0; text-align: center; font-size: 0.8rem;
-        font-weight: 600; letter-spacing: 0.04em; border-bottom: 3px solid rgba(108,99,255,0.2);
-        color: #6070a0; }
-.step.active { border-bottom-color: #6c63ff; color: #e0e4f0; }
-.step.done { border-bottom-color: #2ea8a0; color: #2ea8a0; }
-.hero { text-align: center; padding: 48px 0 32px; }
-.hero h1 { font-size: 3rem; font-weight: 800; background: linear-gradient(135deg, #6c63ff, #a78bfa);
-           -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 12px; }
-.hero p { font-size: 1.1rem; color: #a0a8c0; max-width: 520px; margin: 0 auto; }
+
+/* ── Insight box ── */
 .insight-box { background: rgba(108,99,255,0.08); border-left: 3px solid #6c63ff;
                border-radius: 0 8px 8px 0; padding: 16px 20px; margin-top: 8px; }
 </style>
@@ -88,20 +119,32 @@ for key, default in {
 # ── Helpers ──────────────────────────────────────────────────────────────────
 def render_steps():
     page = st.session_state.page
-    steps = [("1  Upload", "upload"), ("2  Overview", "overview"), ("3  Query", "query")]
-    parts = []
-    for label, key in steps:
-        pages = ["upload", "overview", "query"]
-        current_idx = pages.index(page)
-        step_idx = pages.index(key)
-        if step_idx < current_idx:
-            cls = "done"
-        elif step_idx == current_idx:
-            cls = "active"
+    pages = ["upload", "overview", "query"]
+    steps = [
+        ("☁️", "1. Data Connect"),
+        ("⚙️", "2. Schema Analysis"),
+        ("📊", "3. Insight Dashboard"),
+    ]
+    current_idx = pages.index(page)
+    html = '<div class="stepper">'
+    for i, (icon, label) in enumerate(steps):
+        if i < current_idx:
+            circle_cls, label_cls = "done", "done"
+        elif i == current_idx:
+            circle_cls, label_cls = "active", "active"
         else:
-            cls = ""
-        parts.append(f'<div class="step {cls}">{label}</div>')
-    st.markdown(f'<div class="step-bar">{"".join(parts)}</div>', unsafe_allow_html=True)
+            circle_cls, label_cls = "", ""
+        if i > 0:
+            line_cls = "done" if i <= current_idx else ""
+            html += f'<div class="stepper-line {line_cls}"></div>'
+        html += (
+            f'<div class="stepper-step">'
+            f'<div class="stepper-circle {circle_cls}">{icon}</div>'
+            f'<div class="stepper-label {label_cls}">{label}</div>'
+            f'</div>'
+        )
+    html += '</div>'
+    st.markdown(html, unsafe_allow_html=True)
 
 
 def type_badge(col_type: str) -> str:
@@ -410,49 +453,59 @@ with st.sidebar:
 if st.session_state.page == "upload":
     render_steps()
 
-    st.markdown("""
-    <div class="hero">
-        <h1>BI Assistant</h1>
-        <p>Turn any dataset into insights — no SQL required.<br>
-           Upload your data and ask questions in plain English.</p>
-    </div>
-    """, unsafe_allow_html=True)
+    # How it works
+    st.markdown("### How it works")
+    hiw_cols = st.columns(3)
+    for col, icon, title, desc in zip(
+        hiw_cols,
+        ["🗄️", "🔬", "💬"],
+        ["Unified Data Connection", "Intelligent Schema Mapping", "Natural Language Querying"],
+        [
+            "Import CSV, SQLite, and external DB sources effortlessly",
+            "AI automatically detects tables, relationships, and suggests key metrics",
+            'Ask questions like "Show me sales by region" and get answers',
+        ],
+    ):
+        col.markdown(
+            f'<div class="hiw-card">'
+            f'<div class="hiw-icon">{icon}</div>'
+            f'<div class="hiw-title">{title}</div>'
+            f'<div class="hiw-desc">{desc}</div>'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
 
-    st.divider()
+    st.markdown("<br>", unsafe_allow_html=True)
 
-    c1, c2, c3 = st.columns([1, 2, 1])
-    with c2:
-        st.markdown("#### How it works")
-        cols = st.columns(3)
-        for col, icon, title, desc in zip(
-            cols,
-            ["📁", "🔍", "💡"],
-            ["Upload", "Explore", "Ask"],
-            ["SQLite or CSV files", "Auto schema detection", "Plain English queries"],
-        ):
-            col.markdown(
-                f'<div style="text-align:center;padding:16px 8px;">'
-                f'<div style="font-size:2rem">{icon}</div>'
-                f'<div style="font-weight:700;margin:6px 0 4px">{title}</div>'
-                f'<div style="font-size:0.8rem;color:#6070a0">{desc}</div></div>',
-                unsafe_allow_html=True,
-            )
-
-    st.divider()
+    # Upload section
+    st.markdown('<div class="upload-label">Drop your data file here</div>', unsafe_allow_html=True)
 
     uploaded = st.file_uploader(
-        "Drop your data file here",
+        "",
         type=["sqlite", "db", "csv"],
         accept_multiple_files=True,
         help="Upload a .sqlite/.db file, or multiple .csv files (each becomes a table).",
+        label_visibility="collapsed",
     )
+
+    st.markdown(
+        '<div style="margin-top:10px">'
+        '<span class="fmt-badge">📄 CSV</span>'
+        '<span class="fmt-badge">🗃 SQLITE</span>'
+        '<span class="fmt-badge">💾 DB</span>'
+        '</div>'
+        '<div style="font-size:0.72rem;color:#4a5070;margin-top:6px">• 200MB per file</div>',
+        unsafe_allow_html=True,
+    )
+
+    st.markdown("<br>", unsafe_allow_html=True)
 
     demo_path = Path(__file__).parent / "data" / "olist.sqlite"
     col1, col2 = st.columns(2)
 
     with col1:
         upload_btn = st.button(
-            "🚀 Upload & Analyze",
+            "☁️ Upload & Analyze",
             type="primary",
             disabled=not uploaded,
             use_container_width=True,
