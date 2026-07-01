@@ -540,8 +540,7 @@ if st.session_state.page == "upload":
         '<span class="fmt-badge">📝 TXT</span>'
         '<span class="fmt-badge">🔧 JSON</span>'
         '<span class="fmt-badge">📊 XLSX</span>'
-        '</div>'
-        '<div style="font-size:0.72rem;color:#4a5070;margin-top:6px">• 200MB per file</div>',
+        '</div>',
         unsafe_allow_html=True,
     )
 
